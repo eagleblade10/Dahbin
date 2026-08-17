@@ -112,14 +112,15 @@
     <div class="hud">
       <span>SCORE <span id="score">0000</span></span>
       <a href="index.html">&lt; TITLE SCREEN</a>
-      <span>LIVES <span id="lives">■■■</span></span>
+      <span>HITS <span id="hits">0</span>/3</span>
     </div>
 
     <div class="canvas-wrap pixel-border">
       <canvas id="gameCanvas" width="640" height="420"></canvas>
       <div id="overlay" class="overlay-msg">
-        <p style="font-size:0.9rem;">GAME OVER</p>
+        <p id="overlayTitle" style="font-size:1.1rem; color:var(--accent-3);">HAPPY 5 MONTHS!</p>
         <p id="finalScore" style="font-family:var(--font-body); font-size:1.3rem; color:var(--ink);"></p>
+        <a id="letterLink" class="btn-8bit" href="letter.txt" download="letter.txt" style="text-decoration:none; display:inline-block;">READ YOUR LETTER</a>
         <button id="restartBtn" class="btn-8bit">RETRY</button>
       </div>
     </div>
@@ -131,7 +132,7 @@
       </div>
       <div class="panel">
         <strong>OBJECTIVE</strong>
-        Grumps rush in from the horizon. Pop them with a heart before they reach the shark. Every hit scores and speeds things up — let three through and it's game over.
+        Grumps rush in from the horizon. Pop three of them with a heart to finish — the faster you land all three, the better your score.
       </div>
     </div>
   </main>
@@ -142,7 +143,7 @@
     const W = canvas.width, H = canvas.height;
 
     const scoreEl = document.getElementById('score');
-    const livesEl = document.getElementById('lives');
+    const hitsEl = document.getElementById('hits');
     const overlay = document.getElementById('overlay');
     const finalScoreEl = document.getElementById('finalScore');
     const restartBtn = document.getElementById('restartBtn');
@@ -206,7 +207,8 @@
     let grumps = [];
     let pops = [];   // brief heart-burst effects
     let score = 0;
-    let lives = 3;
+    let hits = 0;
+    const HITS_TO_FINISH = 3;
     let spawnTimer = 0;
     let spawnInterval = 100;
     let zSpeed = 0.0022;
@@ -270,25 +272,27 @@
         grumps.splice(bestIdx, 1);
         pops.push({ x: p.x, y: p.y, tx: p.x, ty: p.y, t: 0, burst: true });
         score += 10;
+        hits += 1;
         if (score % 50 === 0) { zSpeed += 0.0004; spawnInterval = Math.max(45, spawnInterval - 2); }
         updateHUD();
+        if (hits >= HITS_TO_FINISH) finishGame();
       }
     }
 
     function updateHUD() {
       scoreEl.textContent = String(score).padStart(4, '0');
-      livesEl.textContent = '■'.repeat(Math.max(lives, 0)) + '□'.repeat(3 - Math.max(lives, 0));
+      hitsEl.textContent = String(hits);
     }
 
     function resetGame() {
-      score = 0; lives = 3; grumps = []; pops = []; spawnInterval = 100; zSpeed = 0.0022;
+      score = 0; hits = 0; grumps = []; pops = []; spawnInterval = 100; zSpeed = 0.0022;
       running = true;
       overlay.style.display = 'none';
       restartBtn.style.display = 'none';
       updateHUD();
     }
 
-    function endGame() {
+    function finishGame() {
       running = false;
       finalScoreEl.textContent = 'FINAL SCORE: ' + String(score).padStart(4, '0');
       overlay.style.display = 'flex';
@@ -333,9 +337,6 @@
           grumps[i].z += zSpeed;
           if (grumps[i].z >= 1) {
             grumps.splice(i, 1);
-            lives--;
-            updateHUD();
-            if (lives <= 0) endGame();
           }
         }
 
@@ -361,18 +362,24 @@
       ctx.fillStyle = 'rgba(255, 61, 129, 0.5)';
       ctx.fillRect(0, horizonY - 1, W, 2);
 
-      // grumps, farthest drawn first, rendered from face.png
+      // grumps, farthest drawn first, rendered from face.png, clipped to a circle
       grumps
         .slice()
         .sort((a, b) => a.z - b.z)
         .forEach(g => {
           const p = grumpScreenPos(g);
+          const r = p.size / 2;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.clip();
           if (faceLoaded) {
-            ctx.drawImage(faceImg, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+            ctx.drawImage(faceImg, p.x - r, p.y - r, p.size, p.size);
           } else {
             ctx.fillStyle = g.color;
-            ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+            ctx.fillRect(p.x - r, p.y - r, p.size, p.size);
           }
+          ctx.restore();
         });
 
       // pop / heart-shot effects

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL DASH — Insert Coin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .title-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5rem;
+    text-align: center;
+    padding: 2rem 1rem;
+    background:
+      radial-gradient(circle at 50% 30%, #1c1c3d 0%, var(--bg) 65%);
+    position: relative;
+  }
+
+  .cabinet {
+    padding: 2.5rem 2rem;
+    background: var(--panel);
+    max-width: 560px;
+    width: 100%;
+  }
+
+  .eyebrow {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--accent-2);
+    letter-spacing: 4px;
+    margin: 0 0 1.5rem;
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 6vw, 2.6rem);
+    line-height: 1.6;
+    margin: 0 0 1.5rem;
+    color: var(--accent);
+    text-shadow: var(--pixel) var(--pixel) 0 #4a0d24;
+  }
+
+  .subtitle {
+    font-family: var(--font-body);
+    font-size: 1.4rem;
+    letter-spacing: 1px;
+    color: var(--ink-dim);
+    margin: 0 0 2.5rem;
+  }
+
+  .blink {
+    animation: blink-anim 1s steps(1) infinite;
+  }
+
+  @keyframes blink-anim {
+    50% { opacity: 0; }
+  }
+
+  .sprite-row {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 2rem;
+  }
+
+  .sprite {
+    width: 28px;
+    height: 28px;
+    background: var(--accent-3);
+    animation: bob 1.2s ease-in-out infinite;
+  }
+
+  .sprite:nth-child(2) { background: var(--accent-2); animation-delay: .15s; }
+  .sprite:nth-child(3) { background: var(--accent); animation-delay: .3s; }
+  .sprite:nth-child(4) { background: var(--ink); animation-delay: .45s; }
+
+  @keyframes bob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+
+  footer {
+    font-family: var(--font-body);
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+    color: var(--ink-dim);
+    margin-top: 1rem;
+  }
+</style>
+</head>
+<body>
+  <div class="crt crt-flicker"></div>
+
+  <main class="title-screen">
+    <div class="cabinet pixel-border">
+      <p class="eyebrow">— ARCADE PRESENTS —</p>
+      <div class="sprite-row" aria-hidden="true">
+        <div class="sprite"></div>
+        <div class="sprite"></div>
+        <div class="sprite"></div>
+        <div class="sprite"></div>
+      </div>
+      <h1>PIXEL<br>DASH</h1>
+      <p class="subtitle">Dodge the static. Catch the light.</p>
+      <button id="startBtn" class="btn-8bit">
+        <span class="blink">▶</span> PRESS START
+      </button>
+    </div>
+    <footer>© 2026 — USE ARROW KEYS ON THE NEXT SCREEN</footer>
+  </main>
+
+  <script>
+    document.getElementById('startBtn').addEventListener('click', () => {
+      window.location.href = 'main.html';
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') window.location.href = 'main.html';
+    });
+  </script>
+</body>
+</html>

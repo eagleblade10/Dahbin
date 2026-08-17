@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL DASH — Game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .stage {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem 3rem;
+  }
+
+  .hud {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    margin-bottom: 1rem;
+    color: var(--accent-3);
+  }
+
+  .hud a {
+    font-family: var(--font-body);
+    font-size: 1.1rem;
+    letter-spacing: 1px;
+    color: var(--ink-dim);
+    text-decoration: none;
+  }
+
+  .hud a:hover {
+    color: var(--accent-2);
+  }
+
+  #gameCanvas {
+    background: #050510;
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    touch-action: none;
+  }
+
+  .panel-row {
+    width: 100%;
+    max-width: 640px;
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .panel {
+    background: var(--panel);
+    padding: 1rem 1.25rem;
+    flex: 1;
+    min-width: 220px;
+    font-size: 1.25rem;
+    line-height: 1.6;
+    letter-spacing: 0.5px;
+    color: var(--ink-dim);
+  }
+
+  .panel strong {
+    color: var(--accent-2);
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    display: block;
+    margin-bottom: 0.6rem;
+    letter-spacing: 1px;
+  }
+
+  .overlay-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    background: rgba(5, 5, 16, 0.85);
+    font-family: var(--font-display);
+    color: var(--accent);
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+  }
+
+  #restartBtn {
+    display: none;
+  }
+</style>
+</head>
+<body>
+  <div class="crt crt-flicker"></div>
+
+  <main class="stage">
+    <div class="hud">
+      <span>SCORE <span id="score">0000</span></span>
+      <a href="index.html">&lt; TITLE SCREEN</a>
+      <span>LIVES <span id="lives">■■■</span></span>
+    </div>
+
+    <div class="canvas-wrap pixel-border">
+      <canvas id="gameCanvas" width="640" height="420"></canvas>
+      <div id="overlay" class="overlay-msg">
+        <p style="font-size:0.9rem;">GAME OVER</p>
+        <p id="finalScore" style="font-family:var(--font-body); font-size:1.3rem; color:var(--ink);"></p>
+        <button id="restartBtn" class="btn-8bit">RETRY</button>
+      </div>
+    </div>
+
+    <div class="panel-row">
+      <div class="panel">
+        <strong>CONTROLS</strong>
+        ← → or A / D to move. Catch the glowing pixels, dodge the red static blocks.
+      </div>
+      <div class="panel">
+        <strong>OBJECTIVE</strong>
+        Every pixel caught adds to your score and speeds up the drop. Miss three and it's game over — beat your high score.
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('finalScore');
+    const restartBtn = document.getElementById('restartBtn');
+
+    const player = { w: 48, h: 16, x: W / 2 - 24, y: H - 30, speed: 6 };
+    let keys = {};
+    let items = [];
+    let score = 0;
+    let lives = 3;
+    let spawnTimer = 0;
+    let spawnInterval = 60;
+    let fallSpeed = 2.5;
+    let running = true;
+    let frame = 0;
+
+    document.addEventListener('keydown', (e) => {
+      keys[e.key.toLowerCase()] = true;
+    });
+    document.addEventListener('keyup', (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    // basic touch support: tap left/right half of canvas
+    canvas.addEventListener('touchstart', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const touchX = e.touches[0].clientX - rect.left;
+      keys['touchdir'] = touchX < rect.width / 2 ? 'left' : 'right';
+    });
+    canvas.addEventListener('touchend', () => { keys['touchdir'] = null; });
+
+    function spawnItem() {
+      const isHazard = Math.random() < 0.35;
+      items.push({
+        x: Math.random() * (W - 20),
+        y: -20,
+        size: 18,
+        hazard: isHazard,
+        color: isHazard ? '#ff3d81' : (Math.random() < 0.5 ? '#26f7d6' : '#ffd23f')
+      });
+    }
+
+    function updateHUD() {
+      scoreEl.textContent = String(score).padStart(4, '0');
+      livesEl.textContent = '■'.repeat(Math.max(lives, 0)) + '□'.repeat(3 - Math.max(lives, 0));
+    }
+
+    function resetGame() {
+      score = 0; lives = 3; items = []; spawnInterval = 60; fallSpeed = 2.5;
+      player.x = W / 2 - 24;
+      running = true;
+      overlay.style.display = 'none';
+      restartBtn.style.display = 'none';
+      updateHUD();
+    }
+
+    function endGame() {
+      running = false;
+      finalScoreEl.textContent = 'FINAL SCORE: ' + String(score).padStart(4, '0');
+      overlay.style.display = 'flex';
+      restartBtn.style.display = 'inline-block';
+    }
+
+    function loop() {
+      frame++;
+      if (running) {
+        // move player
+        const scale = canvas.width / canvas.getBoundingClientRect().width || 1;
+        if (keys['arrowleft'] || keys['a'] || keys['touchdir'] === 'left') player.x -= player.speed;
+        if (keys['arrowright'] || keys['d'] || keys['touchdir'] === 'right') player.x += player.speed;
+        player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+        // spawn
+        spawnTimer++;
+        if (spawnTimer >= spawnInterval) {
+          spawnTimer = 0;
+          spawnItem();
+        }
+
+        // update items
+        for (let i = items.length - 1; i >= 0; i--) {
+          const it = items[i];
+          it.y += fallSpeed;
+
+          const hit =
+            it.y + it.size >= player.y &&
+            it.x < player.x + player.w &&
+            it.x + it.size > player.x;
+
+          if (hit) {
+            items.splice(i, 1);
+            if (it.hazard) {
+              lives--;
+              updateHUD();
+              if (lives <= 0) endGame();
+            } else {
+              score += 10;
+              if (score % 50 === 0) { fallSpeed += 0.3; spawnInterval = Math.max(24, spawnInterval - 3); }
+              updateHUD();
+            }
+            continue;
+          }
+
+          if (it.y > H) {
+            if (!it.hazard) { lives--; updateHUD(); if (lives <= 0) endGame(); }
+            items.splice(i, 1);
+          }
+        }
+      }
+
+      // draw
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(0, 0, W, H);
+
+      // faint grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      for (let gx = 0; gx < W; gx += 20) {
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+      }
+
+      // items
+      items.forEach(it => {
+        ctx.fillStyle = it.color;
+        ctx.fillRect(it.x, it.y, it.size, it.size);
+      });
+
+      // player
+      ctx.fillStyle = '#eef0ff';
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      requestAnimationFrame(loop);
+    }
+
+    restartBtn.addEventListener('click', resetGame);
+    updateHUD();
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

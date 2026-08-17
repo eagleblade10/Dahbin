@@ -47,6 +47,7 @@
     max-width: 640px;
     height: auto;
     touch-action: none;
+    cursor: crosshair;
   }
 
   .panel-row {
@@ -126,11 +127,11 @@
     <div class="panel-row">
       <div class="panel">
         <strong>CONTROLS</strong>
-        ← → or A / D to move the gun. SPACE, click, or tap to fire hearts.
+        Move your mouse (or finger) to aim. Click or tap to fire hearts from the shark's gun.
       </div>
       <div class="panel">
         <strong>OBJECTIVE</strong>
-        Shoot the grumps out of the sky before they land. Every hit scores and speeds things up. Let three slip past and it's game over.
+        Grumps rush in from the horizon. Pop them with a heart before they reach the shark. Every hit scores and speeds things up — let three through and it's game over.
       </div>
     </div>
   </main>
@@ -146,7 +147,7 @@
     const finalScoreEl = document.getElementById('finalScore');
     const restartBtn = document.getElementById('restartBtn');
 
-    // 7x7 pixel-heart bitmap, drawn as blocky rects for the 8-bit look
+    // 7x7 pixel-heart bitmap
     const HEART_BITMAP = [
       [0,1,1,0,1,1,0],
       [1,1,1,1,1,1,1],
@@ -157,7 +158,8 @@
       [0,0,0,1,0,0,0]
     ];
 
-    function drawHeart(x, y, px, color) {
+    function drawHeart(x, y, px, color, alpha) {
+      ctx.globalAlpha = alpha === undefined ? 1 : alpha;
       for (let row = 0; row < HEART_BITMAP.length; row++) {
         for (let col = 0; col < HEART_BITMAP[row].length; col++) {
           if (HEART_BITMAP[row][col]) {
@@ -166,52 +168,114 @@
           }
         }
       }
+      ctx.globalAlpha = 1;
     }
 
-    const gun = { w: 40, h: 22, x: W / 2 - 20, y: H - 34, speed: 6 };
-    let keys = {};
-    let hearts = [];   // player projectiles
-    let grumps = [];   // falling targets
+    // cute pixel shark, 16x10 grid: . empty, B body, W belly, E eye, F fin, G gun, M muzzle
+    const SHARK_ROWS = [
+      "...FF...........",
+      "..FFFF..........",
+      ".BBBBBBBB.......",
+      "BBBBBBBBBB...GG.",
+      "BBBWWWWWBBBB.GGM",
+      "BBBWWWWWBBBBEB..",
+      "BBBWWWWWBBBBBB..",
+      ".BBBBBBBBBBBB...",
+      "..BB......BB....",
+      "...B........B..."
+    ];
+    const SHARK_COLORS = {
+      B: "#6fb3ff", W: "#eef0ff", E: "#0a0a14", F: "#3d7fd9", G: "#9a9ac2", M: "#26f7d6"
+    };
+
+    function drawShark(x, y, px) {
+      for (let row = 0; row < SHARK_ROWS.length; row++) {
+        const line = SHARK_ROWS[row];
+        for (let col = 0; col < line.length; col++) {
+          const ch = line[col];
+          if (ch !== ".") {
+            ctx.fillStyle = SHARK_COLORS[ch];
+            ctx.fillRect(Math.round(x + col * px), Math.round(y + row * px), px, px);
+          }
+        }
+      }
+    }
+
+    const horizonY = H * 0.34;
+    const gunTipX = W / 2 + 8 * 8; // roughly where the shark's gun muzzle sits
+    const gunTipY = H - 90;
+
+    let crosshair = { x: W / 2, y: H / 2 };
+    let grumps = [];
+    let pops = [];   // brief heart-burst effects
     let score = 0;
     let lives = 3;
     let spawnTimer = 0;
-    let spawnInterval = 65;
-    let fallSpeed = 1.6;
-    let fireCooldown = 0;
+    let spawnInterval = 70;
+    let zSpeed = 0.006;
     let running = true;
     let frame = 0;
 
-    document.addEventListener('keydown', (e) => {
-      keys[e.key.toLowerCase()] = true;
-      if (e.key === ' ') { e.preventDefault(); fireHeart(); }
-    });
-    document.addEventListener('keyup', (e) => {
-      keys[e.key.toLowerCase()] = false;
-    });
-
-    // touch: left/right half moves, tap fires too
-    canvas.addEventListener('touchstart', (e) => {
+    function updateCrosshairFromEvent(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
-      const touchX = e.touches[0].clientX - rect.left;
-      keys['touchdir'] = touchX < rect.width / 2 ? 'left' : 'right';
-      fireHeart();
-    });
-    canvas.addEventListener('touchend', () => { keys['touchdir'] = null; });
-    canvas.addEventListener('click', () => fireHeart());
+      const scaleX = W / rect.width;
+      const scaleY = H / rect.height;
+      crosshair.x = (clientX - rect.left) * scaleX;
+      crosshair.y = (clientY - rect.top) * scaleY;
+    }
 
-    function fireHeart() {
-      if (!running || fireCooldown > 0) return;
-      hearts.push({ x: gun.x + gun.w / 2 - 7, y: gun.y - 14 });
-      fireCooldown = 12;
+    canvas.addEventListener('mousemove', (e) => updateCrosshairFromEvent(e.clientX, e.clientY));
+    canvas.addEventListener('click', (e) => { updateCrosshairFromEvent(e.clientX, e.clientY); fireAt(crosshair.x, crosshair.y); });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      updateCrosshairFromEvent(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+    canvas.addEventListener('touchstart', (e) => {
+      updateCrosshairFromEvent(e.touches[0].clientX, e.touches[0].clientY);
+      fireAt(crosshair.x, crosshair.y);
+    });
+
+    function grumpScreenPos(g) {
+      const depth = 1 - g.z; // 0 = far, 1 = close
+      const scale = 0.18 + 0.95 * depth;
+      const screenX = W / 2 + g.laneX * (W / 2) * Math.pow(depth, 0.7);
+      const screenY = horizonY + (H - horizonY) * Math.pow(depth, 1.6);
+      const size = g.baseSize * scale;
+      return { x: screenX, y: screenY, size };
     }
 
     function spawnGrump() {
       grumps.push({
-        x: Math.random() * (W - 22),
-        y: -22,
-        size: 20,
+        z: 0,
+        laneX: (Math.random() * 2 - 1) * 0.9,
+        baseSize: 30,
         color: Math.random() < 0.5 ? '#3a3a5c' : '#4d4d78'
       });
+    }
+
+    function fireAt(x, y) {
+      if (!running) return;
+      pops.push({ x: gunTipX, y: gunTipY, tx: x, ty: y, t: 0 });
+
+      // find nearest grump whose current screen circle contains the shot
+      let bestIdx = -1, bestDist = Infinity;
+      grumps.forEach((g, i) => {
+        const p = grumpScreenPos(g);
+        const dx = x - p.x, dy = y - p.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < p.size * 0.7 && dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
+        }
+      });
+      if (bestIdx !== -1) {
+        const p = grumpScreenPos(grumps[bestIdx]);
+        grumps.splice(bestIdx, 1);
+        pops.push({ x: p.x, y: p.y, tx: p.x, ty: p.y, t: 0, burst: true });
+        score += 10;
+        if (score % 50 === 0) { zSpeed += 0.001; spawnInterval = Math.max(30, spawnInterval - 3); }
+        updateHUD();
+      }
     }
 
     function updateHUD() {
@@ -220,8 +284,7 @@
     }
 
     function resetGame() {
-      score = 0; lives = 3; hearts = []; grumps = []; spawnInterval = 65; fallSpeed = 1.6;
-      gun.x = W / 2 - gun.w / 2;
+      score = 0; lives = 3; grumps = []; pops = []; spawnInterval = 70; zSpeed = 0.006;
       running = true;
       overlay.style.display = 'none';
       restartBtn.style.display = 'none';
@@ -235,93 +298,116 @@
       restartBtn.style.display = 'inline-block';
     }
 
+    function drawPerspectiveFloor() {
+      const vpX = W / 2;
+      ctx.strokeStyle = 'rgba(38, 247, 214, 0.14)';
+      ctx.lineWidth = 1;
+
+      const numCols = 9;
+      for (let i = 0; i <= numCols; i++) {
+        const bx = (i / numCols) * W;
+        ctx.beginPath();
+        ctx.moveTo(vpX, horizonY);
+        ctx.lineTo(bx, H);
+        ctx.stroke();
+      }
+
+      const numRows = 7;
+      for (let j = 1; j <= numRows; j++) {
+        const t = j / numRows;
+        const y = horizonY + (H - horizonY) * Math.pow(t, 1.7);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+    }
+
     function loop() {
       frame++;
       if (running) {
-        // move gun
-        if (keys['arrowleft'] || keys['a'] || keys['touchdir'] === 'left') gun.x -= gun.speed;
-        if (keys['arrowright'] || keys['d'] || keys['touchdir'] === 'right') gun.x += gun.speed;
-        gun.x = Math.max(0, Math.min(W - gun.w, gun.x));
-        if (fireCooldown > 0) fireCooldown--;
-
-        // spawn grumps
         spawnTimer++;
         if (spawnTimer >= spawnInterval) {
           spawnTimer = 0;
           spawnGrump();
         }
 
-        // move hearts up
-        for (let i = hearts.length - 1; i >= 0; i--) {
-          hearts[i].y -= 7;
-          if (hearts[i].y < -20) hearts.splice(i, 1);
-        }
-
-        // move grumps down + check collisions with hearts
         for (let i = grumps.length - 1; i >= 0; i--) {
-          const g = grumps[i];
-          g.y += fallSpeed;
-
-          let popped = false;
-          for (let j = hearts.length - 1; j >= 0; j--) {
-            const h = hearts[j];
-            const heartHit =
-              h.x < g.x + g.size &&
-              h.x + 14 > g.x &&
-              h.y < g.y + g.size &&
-              h.y + 14 > g.y;
-            if (heartHit) {
-              hearts.splice(j, 1);
-              popped = true;
-              break;
-            }
-          }
-
-          if (popped) {
-            grumps.splice(i, 1);
-            score += 10;
-            if (score % 50 === 0) { fallSpeed += 0.25; spawnInterval = Math.max(28, spawnInterval - 3); }
-            updateHUD();
-            continue;
-          }
-
-          if (g.y > H) {
+          grumps[i].z += zSpeed;
+          if (grumps[i].z >= 1) {
             grumps.splice(i, 1);
             lives--;
             updateHUD();
             if (lives <= 0) endGame();
           }
         }
+
+        for (let i = pops.length - 1; i >= 0; i--) {
+          pops[i].t += 1;
+          if (pops[i].t > (pops[i].burst ? 14 : 6)) pops.splice(i, 1);
+        }
       }
 
-      // draw
-      ctx.clearRect(0, 0, W, H);
+      // sky
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+      skyGrad.addColorStop(0, '#1c1c3d');
+      skyGrad.addColorStop(1, '#0a0a14');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, horizonY);
+
+      // ground
       ctx.fillStyle = '#050510';
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, horizonY, W, H - horizonY);
+      drawPerspectiveFloor();
 
-      // faint grid
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-      for (let gx = 0; gx < W; gx += 20) {
-        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
-      }
+      // horizon glow line
+      ctx.fillStyle = 'rgba(255, 61, 129, 0.5)';
+      ctx.fillRect(0, horizonY - 1, W, 2);
 
-      // grumps
-      grumps.forEach(g => {
-        ctx.fillStyle = g.color;
-        ctx.fillRect(g.x, g.y, g.size, g.size);
-        ctx.fillStyle = '#ff3d81';
-        ctx.fillRect(g.x + 4, g.y + 6, 4, 4);
-        ctx.fillRect(g.x + g.size - 8, g.y + 6, 4, 4);
+      // grumps, farthest drawn first
+      grumps
+        .slice()
+        .sort((a, b) => a.z - b.z)
+        .forEach(g => {
+          const p = grumpScreenPos(g);
+          ctx.fillStyle = g.color;
+          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+          ctx.fillStyle = '#ff3d81';
+          const eyeSize = Math.max(2, p.size * 0.14);
+          ctx.fillRect(p.x - p.size * 0.28, p.y - p.size * 0.1, eyeSize, eyeSize);
+          ctx.fillRect(p.x + p.size * 0.14, p.y - p.size * 0.1, eyeSize, eyeSize);
+        });
+
+      // pop / heart-shot effects
+      pops.forEach(pop => {
+        if (pop.burst) {
+          const scale = 3 + pop.t * 0.6;
+          const alpha = 1 - pop.t / 14;
+          drawHeart(pop.x - scale * 3.5, pop.y - scale * 3.5, scale, '#ff3d81', alpha);
+        } else {
+          const t = pop.t / 6;
+          const x = pop.x + (pop.tx - pop.x) * t;
+          const y = pop.y + (pop.ty - pop.y) * t;
+          drawHeart(x - 7, y - 7, 2, '#ff3d81');
+        }
       });
 
-      // hearts (projectiles)
-      hearts.forEach(h => drawHeart(h.x, h.y, 2, '#ff3d81'));
+      // shark holding the gun, bottom center
+      drawShark(W / 2 - 8 * 8, H - 90, 8);
 
-      // gun: body + barrel
-      ctx.fillStyle = '#eef0ff';
-      ctx.fillRect(gun.x, gun.y + 8, gun.w, gun.h - 8);
-      ctx.fillStyle = '#26f7d6';
-      ctx.fillRect(gun.x + gun.w / 2 - 5, gun.y, 10, 10);
+      // crosshair reticle
+      ctx.strokeStyle = '#ffd23f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(crosshair.x - 10, crosshair.y);
+      ctx.lineTo(crosshair.x - 3, crosshair.y);
+      ctx.moveTo(crosshair.x + 3, crosshair.y);
+      ctx.lineTo(crosshair.x + 10, crosshair.y);
+      ctx.moveTo(crosshair.x, crosshair.y - 10);
+      ctx.lineTo(crosshair.x, crosshair.y - 3);
+      ctx.moveTo(crosshair.x, crosshair.y + 3);
+      ctx.lineTo(crosshair.x, crosshair.y + 10);
+      ctx.stroke();
 
       requestAnimationFrame(loop);
     }

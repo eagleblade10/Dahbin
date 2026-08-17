@@ -82,7 +82,7 @@
   .overlay-msg {
     position: absolute;
     inset: 0;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     flex-direction: column;
@@ -171,77 +171,30 @@
       ctx.globalAlpha = 1;
     }
 
-    // cute smooth (non-pixelated) shark, drawn with vector shapes instead of a pixel grid
-    function roundRect(x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.arcTo(x + w, y, x + w, y + h, r);
-      ctx.arcTo(x + w, y + h, x, y + h, r);
-      ctx.arcTo(x, y + h, x, y, r);
-      ctx.arcTo(x, y, x + w, y, r);
-      ctx.closePath();
-    }
-
-    function drawShark(cx, cy) {
-      ctx.save();
-      ctx.translate(cx, cy);
-
-      // tail fin
-      ctx.fillStyle = '#3d7fd9';
-      ctx.beginPath();
-      ctx.moveTo(-60, 0);
-      ctx.lineTo(-85, -18);
-      ctx.lineTo(-85, 18);
-      ctx.closePath();
-      ctx.fill();
-
-      // body
-      ctx.fillStyle = '#6fb3ff';
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 65, 35, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // dorsal fin
-      ctx.fillStyle = '#3d7fd9';
-      ctx.beginPath();
-      ctx.moveTo(-10, -33);
-      ctx.lineTo(12, -33);
-      ctx.lineTo(-2, -60);
-      ctx.closePath();
-      ctx.fill();
-
-      // belly
-      ctx.fillStyle = '#eef0ff';
-      ctx.beginPath();
-      ctx.ellipse(5, 16, 45, 17, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // eye
-      ctx.fillStyle = '#0a0a14';
-      ctx.beginPath();
-      ctx.arc(34, -8, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.arc(36.5, -10.5, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-
-      // gun, held out front
-      ctx.fillStyle = '#9a9ac2';
-      roundRect(52, -15, 42, 14, 6);
-      ctx.fill();
-      ctx.fillStyle = '#26f7d6';
-      ctx.beginPath();
-      ctx.arc(94, -8, 7, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
-    }
-
     const horizonY = H * 0.34;
-    const sharkCx = W / 2, sharkCy = H - 60;
-    const gunTipX = sharkCx + 94;
-    const gunTipY = sharkCy - 8;
+    const sharkCx = W / 2, sharkBottomY = H - 8;
+    const sharkW = 150, sharkH = 110;
+    const sharkX = sharkCx - sharkW / 2, sharkY = sharkBottomY - sharkH;
+    const gunTipX = sharkX + sharkW * 0.85;
+    const gunTipY = sharkY + sharkH * 0.42;
+
+    // shark art — drop a shark.png next to this file to replace the placeholder
+    const sharkImg = new Image();
+    let sharkLoaded = false;
+    sharkImg.onload = () => { sharkLoaded = true; };
+    sharkImg.src = 'shark.png';
+
+    function drawShark() {
+      if (sharkLoaded) {
+        ctx.drawImage(sharkImg, sharkX, sharkY, sharkW, sharkH);
+      } else {
+        // placeholder so the scene isn't empty until shark.png is added
+        ctx.fillStyle = 'rgba(111, 179, 255, 0.25)';
+        ctx.fillRect(sharkX, sharkY, sharkW, sharkH);
+        ctx.strokeStyle = 'rgba(111, 179, 255, 0.6)';
+        ctx.strokeRect(sharkX, sharkY, sharkW, sharkH);
+      }
+    }
 
     // entity image — swap this file for your own art, same filename
     const faceImg = new Image();
@@ -437,7 +390,7 @@
       });
 
       // shark holding the gun, bottom center
-      drawShark(sharkCx, sharkCy);
+      drawShark();
 
       // crosshair reticle
       ctx.strokeStyle = '#ffd23f';

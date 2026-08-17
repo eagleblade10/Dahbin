@@ -171,39 +171,83 @@
       ctx.globalAlpha = 1;
     }
 
-    // cute pixel shark, 16x10 grid: . empty, B body, W belly, E eye, F fin, G gun, M muzzle
-    const SHARK_ROWS = [
-      "...FF...........",
-      "..FFFF..........",
-      ".BBBBBBBB.......",
-      "BBBBBBBBBB...GG.",
-      "BBBWWWWWBBBB.GGM",
-      "BBBWWWWWBBBBEB..",
-      "BBBWWWWWBBBBBB..",
-      ".BBBBBBBBBBBB...",
-      "..BB......BB....",
-      "...B........B..."
-    ];
-    const SHARK_COLORS = {
-      B: "#6fb3ff", W: "#eef0ff", E: "#0a0a14", F: "#3d7fd9", G: "#9a9ac2", M: "#26f7d6"
-    };
+    // cute smooth (non-pixelated) shark, drawn with vector shapes instead of a pixel grid
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
 
-    function drawShark(x, y, px) {
-      for (let row = 0; row < SHARK_ROWS.length; row++) {
-        const line = SHARK_ROWS[row];
-        for (let col = 0; col < line.length; col++) {
-          const ch = line[col];
-          if (ch !== ".") {
-            ctx.fillStyle = SHARK_COLORS[ch];
-            ctx.fillRect(Math.round(x + col * px), Math.round(y + row * px), px, px);
-          }
-        }
-      }
+    function drawShark(cx, cy) {
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      // tail fin
+      ctx.fillStyle = '#3d7fd9';
+      ctx.beginPath();
+      ctx.moveTo(-60, 0);
+      ctx.lineTo(-85, -18);
+      ctx.lineTo(-85, 18);
+      ctx.closePath();
+      ctx.fill();
+
+      // body
+      ctx.fillStyle = '#6fb3ff';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 65, 35, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // dorsal fin
+      ctx.fillStyle = '#3d7fd9';
+      ctx.beginPath();
+      ctx.moveTo(-10, -33);
+      ctx.lineTo(12, -33);
+      ctx.lineTo(-2, -60);
+      ctx.closePath();
+      ctx.fill();
+
+      // belly
+      ctx.fillStyle = '#eef0ff';
+      ctx.beginPath();
+      ctx.ellipse(5, 16, 45, 17, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // eye
+      ctx.fillStyle = '#0a0a14';
+      ctx.beginPath();
+      ctx.arc(34, -8, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(36.5, -10.5, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // gun, held out front
+      ctx.fillStyle = '#9a9ac2';
+      roundRect(52, -15, 42, 14, 6);
+      ctx.fill();
+      ctx.fillStyle = '#26f7d6';
+      ctx.beginPath();
+      ctx.arc(94, -8, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
     }
 
     const horizonY = H * 0.34;
-    const gunTipX = W / 2 + 8 * 8; // roughly where the shark's gun muzzle sits
-    const gunTipY = H - 90;
+    const sharkCx = W / 2, sharkCy = H - 60;
+    const gunTipX = sharkCx + 94;
+    const gunTipY = sharkCy - 8;
+
+    // entity image — swap this file for your own art, same filename
+    const faceImg = new Image();
+    let faceLoaded = false;
+    faceImg.onload = () => { faceLoaded = true; };
+    faceImg.src = 'face.png';
 
     let crosshair = { x: W / 2, y: H / 2 };
     let grumps = [];
@@ -211,8 +255,8 @@
     let score = 0;
     let lives = 3;
     let spawnTimer = 0;
-    let spawnInterval = 70;
-    let zSpeed = 0.006;
+    let spawnInterval = 100;
+    let zSpeed = 0.0022;
     let running = true;
     let frame = 0;
 
@@ -273,7 +317,7 @@
         grumps.splice(bestIdx, 1);
         pops.push({ x: p.x, y: p.y, tx: p.x, ty: p.y, t: 0, burst: true });
         score += 10;
-        if (score % 50 === 0) { zSpeed += 0.001; spawnInterval = Math.max(30, spawnInterval - 3); }
+        if (score % 50 === 0) { zSpeed += 0.0004; spawnInterval = Math.max(45, spawnInterval - 2); }
         updateHUD();
       }
     }
@@ -284,7 +328,7 @@
     }
 
     function resetGame() {
-      score = 0; lives = 3; grumps = []; pops = []; spawnInterval = 70; zSpeed = 0.006;
+      score = 0; lives = 3; grumps = []; pops = []; spawnInterval = 100; zSpeed = 0.0022;
       running = true;
       overlay.style.display = 'none';
       restartBtn.style.display = 'none';
@@ -364,18 +408,18 @@
       ctx.fillStyle = 'rgba(255, 61, 129, 0.5)';
       ctx.fillRect(0, horizonY - 1, W, 2);
 
-      // grumps, farthest drawn first
+      // grumps, farthest drawn first, rendered from face.png
       grumps
         .slice()
         .sort((a, b) => a.z - b.z)
         .forEach(g => {
           const p = grumpScreenPos(g);
-          ctx.fillStyle = g.color;
-          ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
-          ctx.fillStyle = '#ff3d81';
-          const eyeSize = Math.max(2, p.size * 0.14);
-          ctx.fillRect(p.x - p.size * 0.28, p.y - p.size * 0.1, eyeSize, eyeSize);
-          ctx.fillRect(p.x + p.size * 0.14, p.y - p.size * 0.1, eyeSize, eyeSize);
+          if (faceLoaded) {
+            ctx.drawImage(faceImg, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+          } else {
+            ctx.fillStyle = g.color;
+            ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+          }
         });
 
       // pop / heart-shot effects
@@ -393,7 +437,7 @@
       });
 
       // shark holding the gun, bottom center
-      drawShark(W / 2 - 8 * 8, H - 90, 8);
+      drawShark(sharkCx, sharkCy);
 
       // crosshair reticle
       ctx.strokeStyle = '#ffd23f';
